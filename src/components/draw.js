@@ -1,4 +1,4 @@
-import { getRadarDataPoints, getRadarCoordinateSeries, getMaxTextListLength, splitPoints, getPieDataPoints, calYAxisData, getXAxisPoints, getDataPoints, fixColumeData, calLegendData } from './charts-data'
+import { getRadarDataPoints, getRadarCoordinateSeries, getMaxTextListLength, splitPoints, getPieDataPoints, calYAxisData, getXAxisPoints, getColumnLineXAxisPoints, getDataPoints, fixColumeData, fixCumulativeData, calCumulativeYAxisData, calLegendData } from './charts-data'
 import { convertCoordinateOrigin, measureText, calRotateTranslate, createCurveControlPoints } from './charts-util'
 import Util from '../util/util'
 import drawPointShape from './draw-data-shape'
@@ -20,9 +20,43 @@ function drawYAxisTitle (title, opts, config, context) {
     context.restore();
 }
 
+/**
+ * Add function: drawColumnLineYAxisTitle
+ * 要求传入的参数包括: colorColumn, colorLine, yAxis:{titleColumn, titleLine}
+ * @author {{Tang Shujun}}
+ */
+function drawColumnLineYAxisTitle (opts, config, context) {
+    const titleLeft = opts.yAxis.titleColumn;
+    const titleRight = opts.yAxis.titleLine;
+    // left YAxis title
+    let startX = config.xAxisHeight + (opts.height - config.xAxisHeight - measureText(titleLeft)) / 2;
+    context.save();
+    context.beginPath();
+    context.setFontSize(config.fontSize);
+    context.setFillStyle(opts.colorColumn || '#333333');
+    context.translate(0, opts.height);
+    context.rotate(-90 * Math.PI / 180);
+    if(titleLeft){
+        context.fillText(titleLeft, startX, config.padding + 0.5 * config.fontSize);
+        context.stroke();
+    }
+    context.closePath();
+    // right YAxis title
+    startX = config.xAxisHeight + (opts.height - config.xAxisHeight - measureText(titleRight)) / 2;
+    context.beginPath();
+    context.setFontSize(config.fontSize);
+    context.setFillStyle(opts.colorLine || '#333333');
+    if(titleRight){
+        context.fillText(titleRight, startX, opts.width - config.padding - 0.5 * config.fontSize);
+        context.stroke();
+    }
+    context.closePath();
+    context.restore();
+}
+
 export function drawColumnDataPoints (series, opts, config, context, process = 1) {
     let { ranges } = calYAxisData(series, opts, config);
-    let { xAxisPoints, eachSpacing } = getXAxisPoints(opts.categories, opts, config);
+    let { xAxisPoints, eachSpacing } = opts.type === 'column-line' ? getColumnLineXAxisPoints(opts.categories, opts, config): getXAxisPoints(opts.categories, opts, config);
     let minRange = ranges.pop();
     let maxRange = ranges.shift();
     let endY = opts.height - config.padding - config.xAxisHeight - config.legendHeight;
@@ -59,6 +93,87 @@ export function drawColumnDataPoints (series, opts, config, context, process = 1
             drawPointText(points, eachSeries, config, context);
         }
     });
+    context.restore();
+    return {
+        xAxisPoints,
+        eachSpacing
+    }
+}
+
+/**
+ * drawCumulativeDataPoints: 处理累计柱状图
+ * Added by Tang Shujun
+ */
+export function drawCumulativeDataPoints (series, opts, config, context, process = 1) {
+    // 获得累计柱状图 y 轴信息
+    let {splitNumber, zeroIndex, ranges} = calCumulativeYAxisData(series, opts, config);
+
+    let { xAxisPoints, eachSpacing } = getXAxisPoints(opts.categories, opts, config);
+    let minRange = ranges[ ranges.length - 1 ];
+    let maxRange = ranges[0];
+    let endY = opts.height - config.padding - config.xAxisHeight - config.legendHeight;
+
+    context.save();
+    if (opts._scrollDistance_ && opts._scrollDistance_ !== 0 && opts.enableScroll === true) {
+        context.translate(opts._scrollDistance_, 0);
+    }
+    // 保存当前画笔的y轴位置
+    let validHeight = opts.height - 2 * config.padding - config.xAxisHeight - config.legendHeight;
+    const positivePosition = Array(series[0].data.length).fill(config.padding + zeroIndex * validHeight / splitNumber);
+    const negativePosition = Array(series[0].data.length).fill(config.padding + zeroIndex * validHeight / splitNumber);
+
+    series.forEach(function(eachSeries, seriesIndex) {
+        let data = eachSeries.data;
+
+        // 计算点的位置
+        let points = [];
+        data.forEach(function(item, index) {
+            if (item === null) {
+                points.push(null);
+            } else {
+                let point = {};
+                point.x = xAxisPoints[index] + Math.round(eachSpacing / 2);
+                let height = validHeight * Math.abs(item - 0) / (maxRange - minRange);
+                height *= process;
+                point.height = height;
+                if( item >= 0 ) {
+                    positivePosition[index] -= height;
+                    point.y = positivePosition[index];
+                } else {
+                    point.y = negativePosition[index];
+                    negativePosition[index] += height;
+                }
+                points.push(point);
+            }
+        });
+        // 结束计算数据点位置
+        points = fixCumulativeData(points, eachSpacing, config);
+
+        // 绘制柱状数据图
+        context.beginPath();
+        context.setFillStyle(eachSeries.color);
+        points.forEach(function(item, index) {
+            if (item !== null) { 
+                let startX = item.x - item.width / 2 + 1;
+                let height = opts.height - item.y - config.padding - config.xAxisHeight - config.legendHeight;
+                context.moveTo(startX, item.y);
+                context.rect(startX, item.y, item.width - 2, item.height);
+            }
+        });
+        context.closePath();
+        context.fill();
+    });
+
+    // 此段代码，用于绘制数据标签信息
+    // 绘制累计柱状图时，不需要绘制数据标签
+    // series.forEach(function(eachSeries, seriesIndex) {
+    //     let data = eachSeries.data;
+    //     let points = getDataPoints(data, minRange, maxRange, xAxisPoints, eachSpacing, opts, config, process);
+    //     points = fixColumeData(points, eachSpacing, series.length, seriesIndex, config, opts);
+    //     if (opts.dataLabel !== false && process === 1) {
+    //         drawPointText(points, eachSeries, config, context);
+    //     }
+    // });
     context.restore();
     return {
         xAxisPoints,
@@ -158,7 +273,7 @@ export function drawAreaDataPoints (series, opts, config, context, process = 1) 
 
 export function drawLineDataPoints (series, opts, config, context, process = 1) {
     let { ranges } = calYAxisData(series, opts, config);
-    let { xAxisPoints, eachSpacing } = getXAxisPoints(opts.categories, opts, config);
+    let { xAxisPoints, eachSpacing } = opts.type === 'column-line' ? getColumnLineXAxisPoints(opts.categories, opts, config) : getXAxisPoints(opts.categories, opts, config);
     let minRange = ranges.pop();
     let maxRange = ranges.shift();
     let calPoints = [];
@@ -222,7 +337,7 @@ export function drawLineDataPoints (series, opts, config, context, process = 1) 
     }
 
     context.restore();
-    
+
     return {
         xAxisPoints,
         calPoints,
@@ -312,8 +427,81 @@ export function drawXAxis (categories, opts, config, context) {
     context.restore();
 }
 
+/**
+* Add function drawColumnLineXAxis
+* @author {{Tang Shujun}}
+*/
+export function drawColumnLineXAxis (categories, opts, config, context) {
+    // getColumnLineXAxisPoints 返回值为: { xAxisPoints, startX, endX, eachSpacing }
+    let { xAxisPoints, startX, endX, eachSpacing } = getColumnLineXAxisPoints(categories, opts, config);
+    let startY = opts.height - config.padding - config.xAxisHeight - config.legendHeight;
+    let endY = startY + config.xAxisLineHeight;
+
+    context.beginPath();
+    context.setStrokeStyle(opts.xAxis.gridColor || "#cccccc");
+    context.setLineWidth(1);
+    context.moveTo(startX, startY);
+    context.lineTo(endX, startY);
+    if (opts.xAxis.disableGrid !== true) {
+        if (opts.xAxis.type === 'calibration') {
+            xAxisPoints.forEach(function(item, index) {
+                if (index > 0) {                
+                    context.moveTo(item - eachSpacing / 2, startY);
+                    context.lineTo(item - eachSpacing / 2, startY + 4);
+                }
+            });
+        } else {
+            xAxisPoints.forEach(function(item, index) {
+                context.moveTo(item, startY);
+                context.lineTo(item, endY);
+            });
+        }
+    }
+    context.closePath();
+    context.stroke();
+
+    // 对X轴列表做抽稀处理
+    let leftYAxisTotalWidth = config.columnLine.leftYAxisWidth + config.columnLine.leftYAxisTitleWidth;
+    let rightYAxisTotalWidth = config.columnLine.rightYAxisWidth + config.columnLine.rightYAxisTitleWidth;
+    let validWidth = opts.width - 2 * config.padding - leftYAxisTotalWidth - rightYAxisTotalWidth;
+    let maxXAxisListLength = Math.min(categories.length, Math.ceil(validWidth / config.fontSize / 1.5));
+    let ratio = Math.ceil(categories.length / maxXAxisListLength);
+
+    categories = categories.map((item, index) => {
+        return index % ratio !== 0 ? '' : item;
+    });
+
+    if (config._xAxisTextAngle_ === 0) {
+        context.beginPath();
+        context.setFontSize(config.fontSize);
+        context.setFillStyle(opts.xAxis.fontColor || '#666666');
+        categories.forEach(function(item, index) {
+            let offset = eachSpacing / 2 - measureText(item) / 2;
+            context.fillText(item, xAxisPoints[index] + offset, startY + config.fontSize + 5);
+        });
+        context.closePath();
+        context.stroke();
+    } else {
+        categories.forEach(function(item, index) {
+            context.save();
+            context.beginPath();
+            context.setFontSize(config.fontSize);
+            context.setFillStyle(opts.xAxis.fontColor || '#666666');
+            let textWidth = measureText(item);
+            let offset = eachSpacing / 2 - textWidth;
+            let { transX, transY }  = calRotateTranslate(xAxisPoints[index] + eachSpacing / 2, startY + config.fontSize / 2 + 5, opts.height);
+            context.rotate(-1 * config._xAxisTextAngle_);
+            context.translate(transX, transY);
+            context.fillText(item, xAxisPoints[index] + offset, startY + config.fontSize + 5);
+            context.closePath();
+            context.stroke();
+            context.restore();
+        });
+    }
+}
+
 export function drawYAxisGrid (opts, config, context) {
-    let spacingValid = opts.height - 2 * config.padding - config.xAxisHeight - config.legendHeight;    
+    let spacingValid = opts.height - 2 * config.padding - config.xAxisHeight - config.legendHeight;
     let eachSpacing = Math.floor(spacingValid / config.yAxisSplit);
     let yAxisTotalWidth = config.yAxisWidth + config.yAxisTitleWidth;    
     let startX = config.padding + yAxisTotalWidth;
@@ -335,7 +523,35 @@ export function drawYAxisGrid (opts, config, context) {
     context.closePath();
     context.stroke();
 }
- 
+
+// Added by Tang Shujun
+export function drawCumulativeYAxisGrid (series, opts, config, context) {
+    // 获得累计柱状图 y 轴信息
+    let { splitNumber, rangesFormat, ranges, yAxisWidth } = calCumulativeYAxisData(series, opts, config);
+
+    let spacingValid = opts.height - 2 * config.padding - config.xAxisHeight - config.legendHeight;
+    let eachSpacing = Math.floor(spacingValid / splitNumber);
+    let yAxisTotalWidth = config.yAxisWidth + config.yAxisTitleWidth;    
+    let startX = config.padding + yAxisTotalWidth;
+    let endX = opts.width - config.padding;
+
+    let points = [];
+    for (let i = 0; i < splitNumber; i++) {
+        points.push(config.padding + eachSpacing * i);
+    }
+    points.push(config.padding + eachSpacing * splitNumber + 2);
+
+    context.beginPath();
+    context.setStrokeStyle(opts.yAxis.gridColor || "#cccccc")
+    context.setLineWidth(1);
+    points.forEach(function(item, index) {
+        context.moveTo(startX, item);
+        context.lineTo(endX, item);
+    });
+    context.closePath();
+    context.stroke();
+}
+
 export function drawYAxis (series, opts, config, context) {
     if (opts.yAxis.disabled === true) {
         return;
@@ -351,7 +567,7 @@ export function drawYAxis (series, opts, config, context) {
     let endY = opts.height - config.padding - config.xAxisHeight - config.legendHeight;
 
     // set YAxis background
-    context.setFillStyle(opts.background || '#ffffff');
+    context.setFillStyle(opts.background || '#FFFFFF');
     if (opts._scrollDistance_ < 0) {    
         context.fillRect(0, 0, startX, endY + config.xAxisHeight + 5);
     }
@@ -376,6 +592,116 @@ export function drawYAxis (series, opts, config, context) {
     if (opts.yAxis.title) {  
         drawYAxisTitle(opts.yAxis.title, opts, config, context);
     }
+}
+
+// Added by Tang Shujun
+export function drawCumulativeYAxis (series, opts, config, context) {
+    if (opts.yAxis.disabled === true) {
+        return;
+    }
+    let { splitNumber, rangesFormat } = calCumulativeYAxisData(series, opts, config);
+    let yAxisTotalWidth = config.yAxisWidth + config.yAxisTitleWidth;
+
+    let spacingValid = opts.height - 2 * config.padding - config.xAxisHeight - config.legendHeight;
+    let eachSpacing = Math.floor(spacingValid / splitNumber);
+    let startX = config.padding + yAxisTotalWidth;
+    let endX = opts.width - config.padding;
+    let startY = config.padding;
+    let endY = opts.height - config.padding - config.xAxisHeight - config.legendHeight;
+
+    // set YAxis background
+    context.setFillStyle(opts.background || '#FFFFFF');
+    if (opts._scrollDistance_ < 0) {    
+        context.fillRect(0, 0, startX, endY + config.xAxisHeight + 5);
+    }
+    context.fillRect(endX, 0, opts.width, endY + config.xAxisHeight + 5);
+
+    let points = [];
+    for (let i = 0; i <= splitNumber; i++) {
+        points.push(config.padding + eachSpacing * i);
+    }
+
+    context.stroke();
+    context.beginPath();
+    context.setFontSize(config.fontSize);
+    context.setFillStyle(opts.yAxis.fontColor || '#666666')
+    rangesFormat.forEach(function(item, index) {
+        let pos = points[index] ? points[index] : endY;
+        context.fillText(item, config.padding + config.yAxisTitleWidth, pos + config.fontSize / 2);
+    });
+    context.closePath();
+    context.stroke();
+
+    if (opts.yAxis.title) {  
+        drawYAxisTitle(opts.yAxis.title, opts, config, context);
+    }
+}
+
+/**
+* Add function drawColumnLineYAxis
+* @author {{Tang Shujun}}
+*/
+export function drawColumnLineYAxis (seriesColumn, seriesLine, opts, config, context) {
+    // y轴包括横向的 gridline
+    if (opts.yAxis.disabled === true) {
+        return;
+    }
+    // 分别处理两边的 yAxis
+    // calYAxisData 返回值 { rangesFormat, ranges, yAxisWidth }
+    // 此处只需用到：
+    // leftYAxisData.rangesFormat
+    // rightYAxisData.rangesFormat
+    let leftYAxisData = calYAxisData(seriesColumn, opts, config);
+    let rightYAxisData = calYAxisData(seriesLine, opts, config);
+    let leftYAxisTotalWidth = config.columnLine.leftYAxisWidth + config.columnLine.leftYAxisTitleWidth;
+    let rightYAxisTotalWidth = config.columnLine.rightYAxisWidth + config.columnLine.rightYAxisTitleWidth;
+
+    let spacingValid = opts.height - 2 * config.padding - config.xAxisHeight - config.legendHeight;
+    let eachSpacing = Math.floor(spacingValid / config.yAxisSplit);
+    let startX = config.padding + leftYAxisTotalWidth;
+    let endX = opts.width - config.padding - rightYAxisTotalWidth;
+    let startY = config.padding;
+    let endY = opts.height - config.padding - config.xAxisHeight - config.legendHeight;
+
+    let points = [];
+    for (let i = 0; i < config.yAxisSplit; i++) {
+        points.push(config.padding + eachSpacing * i);
+    }
+
+    context.beginPath();
+    // 这一段用来画 y 轴 gridline
+    context.setStrokeStyle(opts.yAxis.gridColor || "#cccccc")
+    context.setLineWidth(1);
+    points.forEach(function(item, index) {
+        context.moveTo(startX, item);
+        context.lineTo(endX, item);
+    });
+    context.closePath();
+    context.stroke();
+
+    context.beginPath();
+    // 画左边 yAxis 数据
+    context.setFontSize(config.fontSize);
+    context.setFillStyle(seriesColumn[0].color || '#666666')
+    leftYAxisData.rangesFormat.forEach(function(item, index) {
+        let pos = points[index] ? points[index] : endY;
+        context.fillText(item, config.padding + config.columnLine.leftYAxisTitleWidth, pos + config.fontSize / 2);
+    });
+    context.closePath();
+    context.stroke();
+
+    context.beginPath();
+    // 画右边 yAxis 数据
+    context.setFontSize(config.fontSize);
+    context.setFillStyle(seriesLine[0].color || '#666666')
+    rightYAxisData.rangesFormat.forEach(function(item, index) {
+        let pos = points[index] ? points[index] : endY;
+        context.fillText(item, endX, pos + config.fontSize / 2);
+    });
+    context.closePath();
+    context.stroke();
+
+    drawColumnLineYAxisTitle(opts, config, context);
 }
 
 export function drawLegend (series, opts, config, context) {
@@ -447,6 +773,75 @@ export function drawLegend (series, opts, config, context) {
         });
     });
 }
+
+/**
+* Add function drawColumnLineLegend
+* @author {{Tang Shujun}}
+*/
+export function drawColumnLineLegend (seriesColumn, seriesLine, opts, config, context) {
+    if (!opts.legend) {
+        return;
+    }
+    // each legend shape width 15px
+    // the spacing between shape and text in each legend is the `padding`
+    // each legend spacing is the `padding`
+    // legend margin top `config.padding`
+    let series = seriesColumn.concat(seriesLine);
+    let { legendList, legendHeight } = calLegendData(series, opts, config);
+    let padding = 5;
+    let marginTop = 8;
+    let shapeWidth = 15;
+    const columnLegendNumber = seriesColumn.length;
+    const lineLegendNumber = seriesLine.length;
+    let currentIndex = 0;
+    legendList.forEach((itemList, listIndex) => {
+        let width = 0;
+        itemList.forEach(function (item) {
+            item.name = item.name || 'undefined';
+            width += 3 * padding + measureText(item.name) + shapeWidth;
+        });
+        let startX = (opts.width - width) / 2 + padding;
+        let startY = opts.height - config.padding - config.legendHeight + listIndex * (config.fontSize + marginTop) + padding + marginTop;
+
+        context.setFontSize(config.fontSize);
+        itemList.forEach(function (item) {
+            if( currentIndex < columnLegendNumber ){
+                context.beginPath();
+                context.setFillStyle(item.color);
+                context.moveTo(startX, startY);
+                context.rect(startX, startY, 15, 10);
+                context.closePath();
+                context.fill();
+            } else {
+                context.beginPath();
+                context.setLineWidth(1);
+                context.setStrokeStyle(item.color);
+                context.moveTo(startX - 2, startY + 5);
+                context.lineTo(startX + 17, startY + 5);
+                context.stroke();
+                context.closePath();
+                context.beginPath();
+                context.setLineWidth(1);
+                context.setStrokeStyle('#ffffff');
+                context.setFillStyle(item.color);
+                context.moveTo(startX + 7.5, startY + 5);
+                context.arc(startX + 7.5, startY + 5, 4, 0, 2 * Math.PI);
+                context.fill();
+                context.stroke();
+                context.closePath();
+            }
+            startX += padding + shapeWidth;
+            context.beginPath();
+            context.setFillStyle(opts.extra.legendTextColor || '#333333');
+            context.fillText(item.name, startX, startY + 9);
+            context.closePath();
+            context.stroke();
+            startX += measureText(item.name) + 2 * padding;
+            currentIndex += 1;
+        });
+    });
+}
+
 export function drawPieDataPoints (series, opts, config, context, process = 1) {
     let pieOption = opts.extra.pie || {};
     series = getPieDataPoints(series, process);
@@ -503,7 +898,7 @@ export function drawPieDataPoints (series, opts, config, context, process = 1) {
                 break;
             }
         }
-
+        
         if (valid) {
             drawPieText(series, opts, config, context, radius, centerPosition);
         }
@@ -602,6 +997,10 @@ export function drawRadarDataPoints (series, opts, config, context, process = 1)
     }
 }
 
-export function drawCanvas (opts, context) {
-    context.draw();
+export function drawCanvas (opts, context, reserve) {
+    /**
+    * Add boolean: reserve
+    * @author {{Tang Shujun}}
+    */
+    context.draw(reserve);
 }

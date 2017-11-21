@@ -15,6 +15,11 @@ let Charts = function(opts) {
     opts.animation = opts.animation === false ? false : true;
     let config = assign({}, Config);
     config.yAxisTitleWidth = opts.yAxis.disabled !== true && opts.yAxis.title ? config.yAxisTitleWidth : 0;
+    // 更新 config.columnLine.leftYAxisTitleWidth 和 config.columnLine.rightYAxisTitleWidth
+    // Added by Tang Shujun
+    config.columnLine.leftYAxisTitleWidth = opts.leftYAxis.disabled !== true && opts.leftYAxis.titleColumn ? config.columnLine.leftYAxisTitleWidth : 0;
+    config.columnLine.rightYAxisTitleWidth = opts.rightYAxis.disabled !== true && opts.rightYAxis.titleLine ? config.columnLine.rightYAxisTitleWidth : 0;
+    
     config.pieChartLinePadding = opts.dataLabel === false ? 0 : config.pieChartLinePadding;
     config.pieChartTextPadding = opts.dataLabel === false ? 0 : config.pieChartTextPadding;
 
@@ -37,6 +42,10 @@ let Charts = function(opts) {
 Charts.prototype.updateData = function (data = {}) {
     this.opts.series = data.series || this.opts.series;
     this.opts.categories = data.categories || this.opts.categories;
+
+    // Added by Tang Shujun
+    this.opts.seriesColumn = data.seriesColumn || this.opts.seriesColumn;
+    this.opts.seriesLine = data.seriesLine || this.opts.seriesLine;
 
     this.opts.title = assign({}, this.opts.title, data.title || {});
     this.opts.subtitle = assign({}, this.opts.subtitle, data.subtitle || {});
@@ -70,7 +79,7 @@ Charts.prototype.getCurrentDataIndex = function (e) {
 Charts.prototype.showToolTip = function (e, option = {}) {
     if (this.opts.type === 'line' || this.opts.type === 'area') {
         let index = this.getCurrentDataIndex(e);
-        let { currentOffset } = this.scrollOption;
+        let { currentOffset } = this.scrollOption;        
         let opts = assign({}, this.opts, {
             _scrollDistance_: currentOffset,
             animation: false
@@ -91,15 +100,17 @@ Charts.prototype.showToolTip = function (e, option = {}) {
 }
 
 Charts.prototype.scrollStart = function (e) {
-    if (e.touches[0] && this.opts.enableScroll === true) {
-        this.scrollOption.startTouchX = e.touches[0].x;
+    // Bug fix by Tang Shujun
+    if (e.changedTouches[0] && this.opts.enableScroll === true) {
+        this.scrollOption.startTouchX = e.changedTouches[0].x;
     }
 }
 
 Charts.prototype.scroll = function (e) {
     // TODO throtting...
-    if (e.touches[0] && this.opts.enableScroll === true) {
-        let _distance = e.touches[0].x - this.scrollOption.startTouchX;
+    // Bug fix by Tang Shujun
+    if (e.changedTouches[0] && this.opts.enableScroll === true) {
+        let _distance = e.changedTouches[0].x - this.scrollOption.startTouchX;
         let { currentOffset } = this.scrollOption;
         let validDistance = calValidDistance(currentOffset + _distance, this.chartData, this.config, this.opts);
 

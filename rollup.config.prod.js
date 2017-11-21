@@ -14,7 +14,7 @@ let banner = `/*
 export default {
   entry: 'src/app.js',
   format: 'cjs',
-  dest: 'dist/wxcharts-min.js',
+  dest: '../btrcwechatapp/utils/wxcharts-modified-min.js',
   plugins: [
       babel({
           exclude: 'node_modules/**',

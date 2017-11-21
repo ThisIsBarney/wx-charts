@@ -1,10 +1,11 @@
 /*
  * charts for WeChat small app v1.0
  *
+ * Origin source:
  * https://github.com/xiaolin3303/wx-charts
  * 2016-11-28
  *
- * Designed and built with all the love of Web
+ * Modified by Tang Shujun
  */
 
 'use strict';
@@ -16,10 +17,20 @@ var config = {
     xAxisLineHeight: 15,
     legendHeight: 15,
     yAxisTitleWidth: 15,
+    /**
+     * Add columnLine:{}
+     * @author {{Tang Shujun}}
+     */
+    columnLine: {
+        leftYAxisWidth: 15,
+        leftYAxisTitleWidth: 15,
+        rightYAxisWidth: 15,
+        rightYAxisTitleWidth: 15
+    },
     padding: 12,
     columePadding: 3,
     fontSize: 10,
-    dataPointShape: ['diamond', 'circle', 'triangle', 'rect'],
+    dataPointShape: ['circle', 'diamond', 'triangle', 'rect'],
     colors: ['#7cb5ec', '#f7a35c', '#434348', '#90ed7d', '#f15c80', '#8085e9'],
     pieChartLinePadding: 25,
     pieChartTextPadding: 15,
@@ -525,9 +536,10 @@ function calCategoriesData(categories, opts, config) {
         angle: 0,
         xAxisHeight: config.xAxisHeight
     };
+    // Revised by Tang Shujun
 
-    var _getXAxisPoints = getXAxisPoints(categories, opts, config),
-        eachSpacing = _getXAxisPoints.eachSpacing;
+    var _ref = opts.type === 'column-line' ? getColumnLineXAxisPoints(categories, opts, config) : getXAxisPoints(categories, opts, config),
+        eachSpacing = _ref.eachSpacing;
 
     // get max length of categories text
 
@@ -626,6 +638,30 @@ function fixColumeData(points, eachSpacing, columnLen, index, config, opts) {
     });
 }
 
+/**
+ * Added by Tang Shujun
+ */
+function fixCumulativeData(points, eachSpacing, config) {
+    return points.map(function (item) {
+        if (item === null) {
+            return null;
+        }
+        item.width = eachSpacing - 2 * config.columePadding;
+        item.width = Math.min(item.width, 25);
+
+        // if (opts.extra.column && opts.extra.column.width && +opts.extra.column.width > 0) {
+        //     // customer column width
+        //     item.width = Math.min(item.width, +opts.extra.column.width);
+        // } else {
+        //     // default width should less tran 25px
+        //     // don't ask me why, I don't know
+        //     item.width = Math.min(item.width, 25);
+        // }
+
+        return item;
+    });
+}
+
 function getXAxisPoints(categories, opts, config) {
     var yAxisTotalWidth = config.yAxisWidth + config.yAxisTitleWidth;
     var spacingValid = opts.width - 2 * config.padding - yAxisTotalWidth;
@@ -643,6 +679,26 @@ function getXAxisPoints(categories, opts, config) {
     } else {
         xAxisPoints.push(endX);
     }
+
+    return { xAxisPoints: xAxisPoints, startX: startX, endX: endX, eachSpacing: eachSpacing };
+}
+/**
+ * Add function getColumnLineXAxisPoints
+ * @author {{Tang Shujun}}
+ */
+function getColumnLineXAxisPoints(categories, opts, config) {
+    var leftYAxisTotalWidth = config.columnLine.leftYAxisWidth + config.columnLine.leftYAxisTitleWidth;
+    var rightYAxisTotalWidth = config.columnLine.rightYAxisWidth + config.columnLine.rightYAxisTitleWidth;
+    var spacingValid = opts.width - 2 * config.padding - leftYAxisTotalWidth - rightYAxisTotalWidth;
+    var eachSpacing = spacingValid / categories.length;
+
+    var xAxisPoints = [];
+    var startX = config.padding + leftYAxisTotalWidth;
+    var endX = opts.width - config.padding - rightYAxisTotalWidth;
+    categories.forEach(function (item, index) {
+        xAxisPoints.push(startX + index * eachSpacing);
+    });
+    xAxisPoints.push(endX);
 
     return { xAxisPoints: xAxisPoints, startX: startX, endX: endX, eachSpacing: eachSpacing };
 }
@@ -664,11 +720,15 @@ function getDataPoints(data, minRange, maxRange, xAxisPoints, eachSpacing, opts,
             points.push(point);
         }
     });
-
     return points;
 }
 
 function getYAxisTextList(series, opts, config) {
+    // Added by Tang Shujun
+    var proYAxis = 'yAxis';
+    if (series[0].position === 'left') proYAxis = 'leftYAxis';
+    if (series[0].position === 'right') proYAxis = 'rightYAxis';
+
     var data = dataCombine(series);
     // remove null from data
     data = data.filter(function (item) {
@@ -676,11 +736,11 @@ function getYAxisTextList(series, opts, config) {
     });
     var minData = Math.min.apply(this, data);
     var maxData = Math.max.apply(this, data);
-    if (typeof opts.yAxis.min === 'number') {
-        minData = Math.min(opts.yAxis.min, minData);
+    if (typeof opts[proYAxis].min === 'number') {
+        minData = Math.min(opts[proYAxis].min, minData);
     }
-    if (typeof opts.yAxis.max === 'number') {
-        maxData = Math.max(opts.yAxis.max, maxData);
+    if (typeof opts[proYAxis].max === 'number') {
+        maxData = Math.max(opts[proYAxis].max, maxData);
     }
 
     // fix issue https://github.com/xiaolin3303/wx-charts/issues/9
@@ -704,20 +764,111 @@ function getYAxisTextList(series, opts, config) {
 }
 
 function calYAxisData(series, opts, config) {
+    // Modified by Tang Shujun
+    var yAxisPosition = 'yAxis';
+    if (series[0].position === 'left') yAxisPosition = 'leftYAxis';
+    if (series[0].position === 'right') yAxisPosition = 'rightYAxis';
 
     var ranges = getYAxisTextList(series, opts, config);
     var yAxisWidth = config.yAxisWidth;
     var rangesFormat = ranges.map(function (item) {
+        // 默认显示两位小数，计算得到 y 轴文字，取最长的文字+5为 y 轴宽度
         item = util.toFixed(item, 2);
-        item = opts.yAxis.format ? opts.yAxis.format(Number(item)) : item;
+        item = opts[yAxisPosition].format ? opts[yAxisPosition].format(Number(item)) : item;
         yAxisWidth = Math.max(yAxisWidth, measureText(item) + 5);
         return item;
     });
-    if (opts.yAxis.disabled === true) {
+    if (opts[yAxisPosition].disabled === true) {
         yAxisWidth = 0;
     }
 
     return { rangesFormat: rangesFormat, ranges: ranges, yAxisWidth: yAxisWidth };
+}
+
+// Added by Tang Shujun
+// series [ { name: '', data: [] }, { name: '', data:[] } ]
+// 根据 series，返回累计柱状图纵坐标标尺位置以及相应的带格式文字、
+// 调用此函数，就可以获得当前y轴需要的每隔数据点信息
+function calCumulativeYAxisData(series, opts, config) {
+    // 定义数组最大值最小值方法
+    Array.prototype.max = function () {
+        return Math.max.apply({}, this);
+    };
+    Array.prototype.min = function () {
+        return Math.min.apply({}, this);
+    };
+    // 首先根据 series 处理得到数据的适应区间
+    var positive = Array(series[0].data.length).fill(0);
+    var negative = Array(series[0].data.length).fill(0);
+    series.forEach(function (item, index) {
+        item.data.forEach(function (dataItem, dataIndex) {
+            if (dataItem >= 0) {
+                positive[dataIndex] += dataItem;
+            } else {
+                negative[dataIndex] += dataItem;
+            }
+        });
+    });
+    var maxData = positive.max();
+    var minData = negative.min();
+
+    var splitNumber = 0;
+    var zeroIndex = NaN;
+    var ranges = [];
+    var rangesFormat = [];
+    var yAxisWidth = config.yAxisWidth;
+    if (maxData >= 0) {
+        if (minData >= 0) {
+            zeroIndex = config.yAxisSplit;
+            splitNumber = config.yAxisSplit;
+            var dataRange = getDataRange(0, maxData);
+            var eachRange = dataRange.maxRange / splitNumber;
+            for (var i = 0; i <= splitNumber; i++) {
+                ranges.push(dataRange.maxRange - eachRange * i);
+            }
+            rangesFormat = ranges.map(function (item) {
+                // 默认显示两位小数，计算得到 y 轴文字，取最长的文字+5为 y 轴宽度
+                item = util.toFixed(item, 2);
+                item = opts.yAxis.format ? opts.yAxis.format(Number(item)) : item;
+                yAxisWidth = Math.max(yAxisWidth, measureText(item) + 5);
+                return item;
+            });
+        } else {
+            // maxData >= 0  &&  minData < 0
+            zeroIndex = config.yAxisSplit;
+            var _dataRange = getDataRange(0, maxData);
+            var _eachRange = _dataRange.maxRange / config.yAxisSplit;
+            splitNumber = config.yAxisSplit + Math.ceil((0 - minData) / _eachRange);
+            for (var _i = 0; _i <= splitNumber; _i++) {
+                ranges.push(_dataRange.maxRange - _eachRange * _i);
+            }
+            rangesFormat = ranges.map(function (item) {
+                // 默认显示两位小数，计算得到 y 轴文字，取最长的文字+5为 y 轴宽度
+                item = util.toFixed(item, 2);
+                item = opts.yAxis.format ? opts.yAxis.format(Number(item)) : item;
+                yAxisWidth = Math.max(yAxisWidth, measureText(item) + 5);
+                return item;
+            });
+        }
+    } else {
+        // maxData < 0
+        zeroIndex = 0;
+        splitNumber = config.yAxisSplit;
+        var _dataRange2 = getDataRange(minData, 0);
+        var minRange = _dataRange2.minRange;
+        var _eachRange2 = (0 - minRange) / config.yAxisSplit;
+        for (var _i2 = 0; _i2 <= splitNumber; _i2++) {
+            ranges.push(0 - _eachRange2 * _i2);
+        }
+        rangesFormat = ranges.map(function (item) {
+            // 默认显示两位小数，计算得到 y 轴文字，取最长的文字+5为 y 轴宽度
+            item = util.toFixed(item, 2);
+            item = opts.yAxis.format ? opts.yAxis.format(Number(item)) : item;
+            yAxisWidth = Math.max(yAxisWidth, measureText(item) + 5);
+            return item;
+        });
+    }
+    return { splitNumber: splitNumber, zeroIndex: zeroIndex, rangesFormat: rangesFormat, ranges: ranges, yAxisWidth: yAxisWidth };
 }
 
 function drawPointShape(points, color, shape, context) {
@@ -975,8 +1126,8 @@ function drawToolTip(textList, offset, opts, config, context) {
     var toolTipWidth = legendWidth + legendMarginRight + 4 * config.toolTipPadding + Math.max.apply(null, textWidth);
     var toolTipHeight = 2 * config.toolTipPadding + textList.length * config.toolTipLineHeight;
 
-    // if beyond the right border
-    if (offset.x - Math.abs(opts._scrollDistance_) + arrowWidth + toolTipWidth > opts.width) {
+    // if over the right border
+    if (offset.x + arrowWidth + toolTipWidth > opts.width) {
         isOverRightBorder = true;
     }
 
@@ -1045,15 +1196,49 @@ function drawYAxisTitle(title, opts, config, context) {
     context.restore();
 }
 
+/**
+ * Add function: drawColumnLineYAxisTitle
+ * 要求传入的参数包括: colorColumn, colorLine, yAxis:{titleColumn, titleLine}
+ * @author {{Tang Shujun}}
+ */
+function drawColumnLineYAxisTitle(opts, config, context) {
+    var titleLeft = opts.yAxis.titleColumn;
+    var titleRight = opts.yAxis.titleLine;
+    // left YAxis title
+    var startX = config.xAxisHeight + (opts.height - config.xAxisHeight - measureText(titleLeft)) / 2;
+    context.save();
+    context.beginPath();
+    context.setFontSize(config.fontSize);
+    context.setFillStyle(opts.colorColumn || '#333333');
+    context.translate(0, opts.height);
+    context.rotate(-90 * Math.PI / 180);
+    if (titleLeft) {
+        context.fillText(titleLeft, startX, config.padding + 0.5 * config.fontSize);
+        context.stroke();
+    }
+    context.closePath();
+    // right YAxis title
+    startX = config.xAxisHeight + (opts.height - config.xAxisHeight - measureText(titleRight)) / 2;
+    context.beginPath();
+    context.setFontSize(config.fontSize);
+    context.setFillStyle(opts.colorLine || '#333333');
+    if (titleRight) {
+        context.fillText(titleRight, startX, opts.width - config.padding - 0.5 * config.fontSize);
+        context.stroke();
+    }
+    context.closePath();
+    context.restore();
+}
+
 function drawColumnDataPoints(series, opts, config, context) {
     var process = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : 1;
 
     var _calYAxisData = calYAxisData(series, opts, config),
         ranges = _calYAxisData.ranges;
 
-    var _getXAxisPoints = getXAxisPoints(opts.categories, opts, config),
-        xAxisPoints = _getXAxisPoints.xAxisPoints,
-        eachSpacing = _getXAxisPoints.eachSpacing;
+    var _ref = opts.type === 'column-line' ? getColumnLineXAxisPoints(opts.categories, opts, config) : getXAxisPoints(opts.categories, opts, config),
+        xAxisPoints = _ref.xAxisPoints,
+        eachSpacing = _ref.eachSpacing;
 
     var minRange = ranges.pop();
     var maxRange = ranges.shift();
@@ -1089,6 +1274,92 @@ function drawColumnDataPoints(series, opts, config, context) {
             drawPointText(points, eachSeries, config, context);
         }
     });
+    context.restore();
+    return {
+        xAxisPoints: xAxisPoints,
+        eachSpacing: eachSpacing
+    };
+}
+
+/**
+ * drawCumulativeDataPoints: 处理累计柱状图
+ * Added by Tang Shujun
+ */
+function drawCumulativeDataPoints(series, opts, config, context) {
+    var process = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : 1;
+
+    // 获得累计柱状图 y 轴信息
+    var _calCumulativeYAxisDa = calCumulativeYAxisData(series, opts, config),
+        splitNumber = _calCumulativeYAxisDa.splitNumber,
+        zeroIndex = _calCumulativeYAxisDa.zeroIndex,
+        ranges = _calCumulativeYAxisDa.ranges;
+
+    var _getXAxisPoints = getXAxisPoints(opts.categories, opts, config),
+        xAxisPoints = _getXAxisPoints.xAxisPoints,
+        eachSpacing = _getXAxisPoints.eachSpacing;
+
+    var minRange = ranges[ranges.length - 1];
+    var maxRange = ranges[0];
+    context.save();
+    if (opts._scrollDistance_ && opts._scrollDistance_ !== 0 && opts.enableScroll === true) {
+        context.translate(opts._scrollDistance_, 0);
+    }
+    // 保存当前画笔的y轴位置
+    var validHeight = opts.height - 2 * config.padding - config.xAxisHeight - config.legendHeight;
+    var positivePosition = Array(series[0].data.length).fill(config.padding + zeroIndex * validHeight / splitNumber);
+    var negativePosition = Array(series[0].data.length).fill(config.padding + zeroIndex * validHeight / splitNumber);
+
+    series.forEach(function (eachSeries, seriesIndex) {
+        var data = eachSeries.data;
+
+        // 计算点的位置
+        var points = [];
+        data.forEach(function (item, index) {
+            if (item === null) {
+                points.push(null);
+            } else {
+                var point = {};
+                point.x = xAxisPoints[index] + Math.round(eachSpacing / 2);
+                var height = validHeight * Math.abs(item - 0) / (maxRange - minRange);
+                height *= process;
+                point.height = height;
+                if (item >= 0) {
+                    positivePosition[index] -= height;
+                    point.y = positivePosition[index];
+                } else {
+                    point.y = negativePosition[index];
+                    negativePosition[index] += height;
+                }
+                points.push(point);
+            }
+        });
+        // 结束计算数据点位置
+        points = fixCumulativeData(points, eachSpacing, config);
+
+        // 绘制柱状数据图
+        context.beginPath();
+        context.setFillStyle(eachSeries.color);
+        points.forEach(function (item, index) {
+            if (item !== null) {
+                var startX = item.x - item.width / 2 + 1;
+                context.moveTo(startX, item.y);
+                context.rect(startX, item.y, item.width - 2, item.height);
+            }
+        });
+        context.closePath();
+        context.fill();
+    });
+
+    // 此段代码，用于绘制数据标签信息
+    // 绘制累计柱状图时，不需要绘制数据标签
+    // series.forEach(function(eachSeries, seriesIndex) {
+    //     let data = eachSeries.data;
+    //     let points = getDataPoints(data, minRange, maxRange, xAxisPoints, eachSpacing, opts, config, process);
+    //     points = fixColumeData(points, eachSpacing, series.length, seriesIndex, config, opts);
+    //     if (opts.dataLabel !== false && process === 1) {
+    //         drawPointText(points, eachSeries, config, context);
+    //     }
+    // });
     context.restore();
     return {
         xAxisPoints: xAxisPoints,
@@ -1198,9 +1469,9 @@ function drawLineDataPoints(series, opts, config, context) {
     var _calYAxisData3 = calYAxisData(series, opts, config),
         ranges = _calYAxisData3.ranges;
 
-    var _getXAxisPoints3 = getXAxisPoints(opts.categories, opts, config),
-        xAxisPoints = _getXAxisPoints3.xAxisPoints,
-        eachSpacing = _getXAxisPoints3.eachSpacing;
+    var _ref2 = opts.type === 'column-line' ? getColumnLineXAxisPoints(opts.categories, opts, config) : getXAxisPoints(opts.categories, opts, config),
+        xAxisPoints = _ref2.xAxisPoints,
+        eachSpacing = _ref2.eachSpacing;
 
     var minRange = ranges.pop();
     var maxRange = ranges.shift();
@@ -1284,11 +1555,11 @@ function drawToolTipBridge(opts, config, context, process) {
 }
 
 function drawXAxis(categories, opts, config, context) {
-    var _getXAxisPoints4 = getXAxisPoints(categories, opts, config),
-        xAxisPoints = _getXAxisPoints4.xAxisPoints,
-        startX = _getXAxisPoints4.startX,
-        endX = _getXAxisPoints4.endX,
-        eachSpacing = _getXAxisPoints4.eachSpacing;
+    var _getXAxisPoints3 = getXAxisPoints(categories, opts, config),
+        xAxisPoints = _getXAxisPoints3.xAxisPoints,
+        startX = _getXAxisPoints3.startX,
+        endX = _getXAxisPoints3.endX,
+        eachSpacing = _getXAxisPoints3.eachSpacing;
 
     var startY = opts.height - config.padding - config.xAxisHeight - config.legendHeight;
     var endY = startY + config.xAxisLineHeight;
@@ -1363,6 +1634,88 @@ function drawXAxis(categories, opts, config, context) {
     context.restore();
 }
 
+/**
+* Add function drawColumnLineXAxis
+* @author {{Tang Shujun}}
+*/
+function drawColumnLineXAxis(categories, opts, config, context) {
+    // getColumnLineXAxisPoints 返回值为: { xAxisPoints, startX, endX, eachSpacing }
+    var _getColumnLineXAxisPo = getColumnLineXAxisPoints(categories, opts, config),
+        xAxisPoints = _getColumnLineXAxisPo.xAxisPoints,
+        startX = _getColumnLineXAxisPo.startX,
+        endX = _getColumnLineXAxisPo.endX,
+        eachSpacing = _getColumnLineXAxisPo.eachSpacing;
+
+    var startY = opts.height - config.padding - config.xAxisHeight - config.legendHeight;
+    var endY = startY + config.xAxisLineHeight;
+
+    context.beginPath();
+    context.setStrokeStyle(opts.xAxis.gridColor || "#cccccc");
+    context.setLineWidth(1);
+    context.moveTo(startX, startY);
+    context.lineTo(endX, startY);
+    if (opts.xAxis.disableGrid !== true) {
+        if (opts.xAxis.type === 'calibration') {
+            xAxisPoints.forEach(function (item, index) {
+                if (index > 0) {
+                    context.moveTo(item - eachSpacing / 2, startY);
+                    context.lineTo(item - eachSpacing / 2, startY + 4);
+                }
+            });
+        } else {
+            xAxisPoints.forEach(function (item, index) {
+                context.moveTo(item, startY);
+                context.lineTo(item, endY);
+            });
+        }
+    }
+    context.closePath();
+    context.stroke();
+
+    // 对X轴列表做抽稀处理
+    var leftYAxisTotalWidth = config.columnLine.leftYAxisWidth + config.columnLine.leftYAxisTitleWidth;
+    var rightYAxisTotalWidth = config.columnLine.rightYAxisWidth + config.columnLine.rightYAxisTitleWidth;
+    var validWidth = opts.width - 2 * config.padding - leftYAxisTotalWidth - rightYAxisTotalWidth;
+    var maxXAxisListLength = Math.min(categories.length, Math.ceil(validWidth / config.fontSize / 1.5));
+    var ratio = Math.ceil(categories.length / maxXAxisListLength);
+
+    categories = categories.map(function (item, index) {
+        return index % ratio !== 0 ? '' : item;
+    });
+
+    if (config._xAxisTextAngle_ === 0) {
+        context.beginPath();
+        context.setFontSize(config.fontSize);
+        context.setFillStyle(opts.xAxis.fontColor || '#666666');
+        categories.forEach(function (item, index) {
+            var offset = eachSpacing / 2 - measureText(item) / 2;
+            context.fillText(item, xAxisPoints[index] + offset, startY + config.fontSize + 5);
+        });
+        context.closePath();
+        context.stroke();
+    } else {
+        categories.forEach(function (item, index) {
+            context.save();
+            context.beginPath();
+            context.setFontSize(config.fontSize);
+            context.setFillStyle(opts.xAxis.fontColor || '#666666');
+            var textWidth = measureText(item);
+            var offset = eachSpacing / 2 - textWidth;
+
+            var _calRotateTranslate2 = calRotateTranslate(xAxisPoints[index] + eachSpacing / 2, startY + config.fontSize / 2 + 5, opts.height),
+                transX = _calRotateTranslate2.transX,
+                transY = _calRotateTranslate2.transY;
+
+            context.rotate(-1 * config._xAxisTextAngle_);
+            context.translate(transX, transY);
+            context.fillText(item, xAxisPoints[index] + offset, startY + config.fontSize + 5);
+            context.closePath();
+            context.stroke();
+            context.restore();
+        });
+    }
+}
+
 function drawYAxisGrid(opts, config, context) {
     var spacingValid = opts.height - 2 * config.padding - config.xAxisHeight - config.legendHeight;
     var eachSpacing = Math.floor(spacingValid / config.yAxisSplit);
@@ -1375,6 +1728,35 @@ function drawYAxisGrid(opts, config, context) {
         points.push(config.padding + eachSpacing * i);
     }
     points.push(config.padding + eachSpacing * config.yAxisSplit + 2);
+
+    context.beginPath();
+    context.setStrokeStyle(opts.yAxis.gridColor || "#cccccc");
+    context.setLineWidth(1);
+    points.forEach(function (item, index) {
+        context.moveTo(startX, item);
+        context.lineTo(endX, item);
+    });
+    context.closePath();
+    context.stroke();
+}
+
+// Added by Tang Shujun
+function drawCumulativeYAxisGrid(series, opts, config, context) {
+    // 获得累计柱状图 y 轴信息
+    var _calCumulativeYAxisDa2 = calCumulativeYAxisData(series, opts, config),
+        splitNumber = _calCumulativeYAxisDa2.splitNumber;
+
+    var spacingValid = opts.height - 2 * config.padding - config.xAxisHeight - config.legendHeight;
+    var eachSpacing = Math.floor(spacingValid / splitNumber);
+    var yAxisTotalWidth = config.yAxisWidth + config.yAxisTitleWidth;
+    var startX = config.padding + yAxisTotalWidth;
+    var endX = opts.width - config.padding;
+
+    var points = [];
+    for (var i = 0; i < splitNumber; i++) {
+        points.push(config.padding + eachSpacing * i);
+    }
+    points.push(config.padding + eachSpacing * splitNumber + 2);
 
     context.beginPath();
     context.setStrokeStyle(opts.yAxis.gridColor || "#cccccc");
@@ -1404,7 +1786,7 @@ function drawYAxis(series, opts, config, context) {
     var endY = opts.height - config.padding - config.xAxisHeight - config.legendHeight;
 
     // set YAxis background
-    context.setFillStyle(opts.background || '#ffffff');
+    context.setFillStyle(opts.background || '#FFFFFF');
     if (opts._scrollDistance_ < 0) {
         context.fillRect(0, 0, startX, endY + config.xAxisHeight + 5);
     }
@@ -1429,6 +1811,118 @@ function drawYAxis(series, opts, config, context) {
     if (opts.yAxis.title) {
         drawYAxisTitle(opts.yAxis.title, opts, config, context);
     }
+}
+
+// Added by Tang Shujun
+function drawCumulativeYAxis(series, opts, config, context) {
+    if (opts.yAxis.disabled === true) {
+        return;
+    }
+
+    var _calCumulativeYAxisDa3 = calCumulativeYAxisData(series, opts, config),
+        splitNumber = _calCumulativeYAxisDa3.splitNumber,
+        rangesFormat = _calCumulativeYAxisDa3.rangesFormat;
+
+    var yAxisTotalWidth = config.yAxisWidth + config.yAxisTitleWidth;
+
+    var spacingValid = opts.height - 2 * config.padding - config.xAxisHeight - config.legendHeight;
+    var eachSpacing = Math.floor(spacingValid / splitNumber);
+    var startX = config.padding + yAxisTotalWidth;
+    var endX = opts.width - config.padding;
+    var endY = opts.height - config.padding - config.xAxisHeight - config.legendHeight;
+
+    // set YAxis background
+    context.setFillStyle(opts.background || '#FFFFFF');
+    if (opts._scrollDistance_ < 0) {
+        context.fillRect(0, 0, startX, endY + config.xAxisHeight + 5);
+    }
+    context.fillRect(endX, 0, opts.width, endY + config.xAxisHeight + 5);
+
+    var points = [];
+    for (var i = 0; i <= splitNumber; i++) {
+        points.push(config.padding + eachSpacing * i);
+    }
+
+    context.stroke();
+    context.beginPath();
+    context.setFontSize(config.fontSize);
+    context.setFillStyle(opts.yAxis.fontColor || '#666666');
+    rangesFormat.forEach(function (item, index) {
+        var pos = points[index] ? points[index] : endY;
+        context.fillText(item, config.padding + config.yAxisTitleWidth, pos + config.fontSize / 2);
+    });
+    context.closePath();
+    context.stroke();
+
+    if (opts.yAxis.title) {
+        drawYAxisTitle(opts.yAxis.title, opts, config, context);
+    }
+}
+
+/**
+* Add function drawColumnLineYAxis
+* @author {{Tang Shujun}}
+*/
+function drawColumnLineYAxis(seriesColumn, seriesLine, opts, config, context) {
+    // y轴包括横向的 gridline
+    if (opts.yAxis.disabled === true) {
+        return;
+    }
+    // 分别处理两边的 yAxis
+    // calYAxisData 返回值 { rangesFormat, ranges, yAxisWidth }
+    // 此处只需用到：
+    // leftYAxisData.rangesFormat
+    // rightYAxisData.rangesFormat
+    var leftYAxisData = calYAxisData(seriesColumn, opts, config);
+    var rightYAxisData = calYAxisData(seriesLine, opts, config);
+    var leftYAxisTotalWidth = config.columnLine.leftYAxisWidth + config.columnLine.leftYAxisTitleWidth;
+    var rightYAxisTotalWidth = config.columnLine.rightYAxisWidth + config.columnLine.rightYAxisTitleWidth;
+
+    var spacingValid = opts.height - 2 * config.padding - config.xAxisHeight - config.legendHeight;
+    var eachSpacing = Math.floor(spacingValid / config.yAxisSplit);
+    var startX = config.padding + leftYAxisTotalWidth;
+    var endX = opts.width - config.padding - rightYAxisTotalWidth;
+    var endY = opts.height - config.padding - config.xAxisHeight - config.legendHeight;
+
+    var points = [];
+    for (var i = 0; i < config.yAxisSplit; i++) {
+        points.push(config.padding + eachSpacing * i);
+    }
+
+    context.beginPath();
+    // 这一段用来画 y 轴 gridline
+    context.setStrokeStyle(opts.yAxis.gridColor || "#cccccc");
+    context.setLineWidth(1);
+    points.forEach(function (item, index) {
+        context.moveTo(startX, item);
+        context.lineTo(endX, item);
+    });
+    context.closePath();
+    context.stroke();
+
+    context.beginPath();
+    // 画左边 yAxis 数据
+    context.setFontSize(config.fontSize);
+    context.setFillStyle(seriesColumn[0].color || '#666666');
+    leftYAxisData.rangesFormat.forEach(function (item, index) {
+        var pos = points[index] ? points[index] : endY;
+        context.fillText(item, config.padding + config.columnLine.leftYAxisTitleWidth, pos + config.fontSize / 2);
+    });
+    context.closePath();
+    context.stroke();
+
+    context.beginPath();
+    // 画右边 yAxis 数据
+    context.setFontSize(config.fontSize);
+    context.setFillStyle(seriesLine[0].color || '#666666');
+    rightYAxisData.rangesFormat.forEach(function (item, index) {
+        var pos = points[index] ? points[index] : endY;
+        context.fillText(item, endX, pos + config.fontSize / 2);
+    });
+    context.closePath();
+    context.stroke();
+
+    drawColumnLineYAxisTitle(opts, config, context);
 }
 
 function drawLegend(series, opts, config, context) {
@@ -1503,6 +1997,77 @@ function drawLegend(series, opts, config, context) {
         });
     });
 }
+
+/**
+* Add function drawColumnLineLegend
+* @author {{Tang Shujun}}
+*/
+function drawColumnLineLegend(seriesColumn, seriesLine, opts, config, context) {
+    if (!opts.legend) {
+        return;
+    }
+    // each legend shape width 15px
+    // the spacing between shape and text in each legend is the `padding`
+    // each legend spacing is the `padding`
+    // legend margin top `config.padding`
+    var series = seriesColumn.concat(seriesLine);
+
+    var _calLegendData2 = calLegendData(series, opts, config),
+        legendList = _calLegendData2.legendList;
+
+    var padding = 5;
+    var marginTop = 8;
+    var shapeWidth = 15;
+    var columnLegendNumber = seriesColumn.length;
+    var currentIndex = 0;
+    legendList.forEach(function (itemList, listIndex) {
+        var width = 0;
+        itemList.forEach(function (item) {
+            item.name = item.name || 'undefined';
+            width += 3 * padding + measureText(item.name) + shapeWidth;
+        });
+        var startX = (opts.width - width) / 2 + padding;
+        var startY = opts.height - config.padding - config.legendHeight + listIndex * (config.fontSize + marginTop) + padding + marginTop;
+
+        context.setFontSize(config.fontSize);
+        itemList.forEach(function (item) {
+            if (currentIndex < columnLegendNumber) {
+                context.beginPath();
+                context.setFillStyle(item.color);
+                context.moveTo(startX, startY);
+                context.rect(startX, startY, 15, 10);
+                context.closePath();
+                context.fill();
+            } else {
+                context.beginPath();
+                context.setLineWidth(1);
+                context.setStrokeStyle(item.color);
+                context.moveTo(startX - 2, startY + 5);
+                context.lineTo(startX + 17, startY + 5);
+                context.stroke();
+                context.closePath();
+                context.beginPath();
+                context.setLineWidth(1);
+                context.setStrokeStyle('#ffffff');
+                context.setFillStyle(item.color);
+                context.moveTo(startX + 7.5, startY + 5);
+                context.arc(startX + 7.5, startY + 5, 4, 0, 2 * Math.PI);
+                context.fill();
+                context.stroke();
+                context.closePath();
+            }
+            startX += padding + shapeWidth;
+            context.beginPath();
+            context.setFillStyle(opts.extra.legendTextColor || '#333333');
+            context.fillText(item.name, startX, startY + 9);
+            context.closePath();
+            context.stroke();
+            startX += measureText(item.name) + 2 * padding;
+            currentIndex += 1;
+        });
+    });
+}
+
 function drawPieDataPoints(series, opts, config, context) {
     var process = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : 1;
 
@@ -1661,8 +2226,12 @@ function drawRadarDataPoints(series, opts, config, context) {
     };
 }
 
-function drawCanvas(opts, context) {
-    context.draw();
+function drawCanvas(opts, context, reserve) {
+    /**
+    * Add boolean: reserve
+    * @author {{Tang Shujun}}
+    */
+    context.draw(reserve);
 }
 
 var Timing = {
@@ -1747,33 +2316,122 @@ function drawCharts(type, opts, config, context) {
     var _this = this;
 
     var series = opts.series;
+    // Added by Tang Shujun
+    var seriesColumn = opts.seriesColumn;
+    var seriesLine = opts.seriesLine;
     var categories = opts.categories;
-    series = fillSeriesColor(series, config);
+    /**
+    * 在正式画图之前，需要更新以下数据：
+    * series：更新颜色信息
+    * seriesColumn
+    * seriesLine
+    * config.legendHeight
+    * config.yAxisWidth
+    * config.xAxisHeight
+    * config._xAxisTextAngle_
+    * config._pieTextMaxLength_
+    */
+    if (type === 'column-line') {
+        // Modified by Tang Shujun
+        //  column-line 混合图
+        seriesColumn = fillSeriesColor(seriesColumn, config);
+        seriesLine = fillSeriesColor(seriesLine, config);
 
-    var _calLegendData = calLegendData(series, opts, config),
-        legendHeight = _calLegendData.legendHeight;
+        series = seriesColumn.concat(seriesLine);
 
-    config.legendHeight = legendHeight;
+        var _calLegendData = calLegendData(series, opts, config),
+            legendHeight = _calLegendData.legendHeight;
 
-    var _calYAxisData = calYAxisData(series, opts, config),
-        yAxisWidth = _calYAxisData.yAxisWidth;
+        config.legendHeight = legendHeight;
 
-    config.yAxisWidth = yAxisWidth;
-    if (categories && categories.length) {
-        var _calCategoriesData = calCategoriesData(categories, opts, config),
-            xAxisHeight = _calCategoriesData.xAxisHeight,
-            angle = _calCategoriesData.angle;
+        // TODO
+        var leftYAxisData = calYAxisData(seriesColumn, opts, config);
+        var rightYAxisData = calYAxisData(seriesLine, opts, config);
+        config.columnLine.leftYAxisWidth = leftYAxisData.yAxisWidth;
+        config.columnLine.rightYAxisWidth = rightYAxisData.yAxisWidth;
 
-        config.xAxisHeight = xAxisHeight;
-        config._xAxisTextAngle_ = angle;
-    }
-    if (type === 'pie' || type === 'ring') {
-        config._pieTextMaxLength_ = opts.dataLabel === false ? 0 : getPieTextMaxLength(series);
+        if (categories && categories.length) {
+            var _calCategoriesData = calCategoriesData(categories, opts, config),
+                xAxisHeight = _calCategoriesData.xAxisHeight,
+                angle = _calCategoriesData.angle;
+
+            config.xAxisHeight = xAxisHeight;
+            config._xAxisTextAngle_ = angle;
+        }
+    } else {
+        // 普通图
+        series = fillSeriesColor(series, config);
+
+        var _calLegendData2 = calLegendData(series, opts, config),
+            _legendHeight = _calLegendData2.legendHeight;
+
+        config.legendHeight = _legendHeight;
+
+        var _ref = type === 'cumulative' ? calCumulativeYAxisData(series, opts, config) : calYAxisData(series, opts, config),
+            yAxisWidth = _ref.yAxisWidth;
+
+        config.yAxisWidth = yAxisWidth;
+        if (categories && categories.length) {
+            var _calCategoriesData2 = calCategoriesData(categories, opts, config),
+                _xAxisHeight = _calCategoriesData2.xAxisHeight,
+                _angle = _calCategoriesData2.angle;
+
+            config.xAxisHeight = _xAxisHeight;
+            config._xAxisTextAngle_ = _angle;
+        }
+        if (type === 'pie' || type === 'ring') {
+            config._pieTextMaxLength_ = opts.dataLabel === false ? 0 : getPieTextMaxLength(series);
+        }
     }
 
     var duration = opts.animation ? 1000 : 0;
     this.animationInstance && this.animationInstance.stop();
+
     switch (type) {
+        /**
+        * Add case 'column-line'、'cumulative'
+        * @author {{Tang Shujun}}
+        */
+        case 'cumulative':
+            this.animationInstance = new Animation({
+                timing: 'easeIn',
+                duration: duration,
+                onProcess: function onProcess(process) {
+                    drawCumulativeYAxisGrid(series, opts, config, context);
+
+                    var _drawCumulativeDataPo = drawCumulativeDataPoints(series, opts, config, context, process),
+                        xAxisPoints = _drawCumulativeDataPo.xAxisPoints,
+                        eachSpacing = _drawCumulativeDataPo.eachSpacing;
+
+                    _this.chartData.xAxisPoints = xAxisPoints;
+                    _this.chartData.eachSpacing = eachSpacing;
+                    drawXAxis(categories, opts, config, context);
+                    drawLegend(opts.series, opts, config, context);
+                    drawCumulativeYAxis(series, opts, config, context);
+                    drawCanvas(opts, context, false);
+                },
+                onAnimationFinish: function onAnimationFinish() {
+                    _this.event.trigger('renderComplete');
+                }
+            });
+            break;
+        case 'column-line':
+            drawColumnLineYAxis(seriesColumn, seriesLine, opts, config, context);
+            drawColumnLineXAxis(categories, opts, config, context);
+            // 先画柱状图
+            drawColumnDataPoints(seriesColumn, opts, config, context);
+            drawCanvas(opts, context, false);
+            // 再画折线图
+
+            var _drawLineDataPoints = drawLineDataPoints(seriesLine, opts, config, context),
+                xAxisPoints = _drawLineDataPoints.xAxisPoints,
+                calPoints = _drawLineDataPoints.calPoints;
+
+            this.chartData.xAxisPoints = xAxisPoints;
+            this.chartData.calPoints = calPoints;
+            drawColumnLineLegend(seriesColumn, seriesLine, opts, config, context);
+            drawCanvas(opts, context, true);
+            break;
         case 'line':
             this.animationInstance = new Animation({
                 timing: 'easeIn',
@@ -1781,10 +2439,10 @@ function drawCharts(type, opts, config, context) {
                 onProcess: function onProcess(process) {
                     drawYAxisGrid(opts, config, context);
 
-                    var _drawLineDataPoints = drawLineDataPoints(series, opts, config, context, process),
-                        xAxisPoints = _drawLineDataPoints.xAxisPoints,
-                        calPoints = _drawLineDataPoints.calPoints,
-                        eachSpacing = _drawLineDataPoints.eachSpacing;
+                    var _drawLineDataPoints2 = drawLineDataPoints(series, opts, config, context, process),
+                        xAxisPoints = _drawLineDataPoints2.xAxisPoints,
+                        calPoints = _drawLineDataPoints2.calPoints,
+                        eachSpacing = _drawLineDataPoints2.eachSpacing;
 
                     _this.chartData.xAxisPoints = xAxisPoints;
                     _this.chartData.calPoints = calPoints;
@@ -1793,7 +2451,7 @@ function drawCharts(type, opts, config, context) {
                     drawLegend(opts.series, opts, config, context);
                     drawYAxis(series, opts, config, context);
                     drawToolTipBridge(opts, config, context, process);
-                    drawCanvas(opts, context);
+                    drawCanvas(opts, context, false);
                 },
                 onAnimationFinish: function onAnimationFinish() {
                     _this.event.trigger('renderComplete');
@@ -1816,7 +2474,7 @@ function drawCharts(type, opts, config, context) {
                     drawXAxis(categories, opts, config, context);
                     drawLegend(opts.series, opts, config, context);
                     drawYAxis(series, opts, config, context);
-                    drawCanvas(opts, context);
+                    drawCanvas(opts, context, false);
                 },
                 onAnimationFinish: function onAnimationFinish() {
                     _this.event.trigger('renderComplete');
@@ -1842,7 +2500,7 @@ function drawCharts(type, opts, config, context) {
                     drawLegend(opts.series, opts, config, context);
                     drawYAxis(series, opts, config, context);
                     drawToolTipBridge(opts, config, context, process);
-                    drawCanvas(opts, context);
+                    drawCanvas(opts, context, false);
                 },
                 onAnimationFinish: function onAnimationFinish() {
                     _this.event.trigger('renderComplete');
@@ -1857,7 +2515,7 @@ function drawCharts(type, opts, config, context) {
                 onProcess: function onProcess(process) {
                     _this.chartData.pieData = drawPieDataPoints(series, opts, config, context, process);
                     drawLegend(opts.series, opts, config, context);
-                    drawCanvas(opts, context);
+                    drawCanvas(opts, context, false);
                 },
                 onAnimationFinish: function onAnimationFinish() {
                     _this.event.trigger('renderComplete');
@@ -1871,7 +2529,7 @@ function drawCharts(type, opts, config, context) {
                 onProcess: function onProcess(process) {
                     _this.chartData.radarData = drawRadarDataPoints(series, opts, config, context, process);
                     drawLegend(opts.series, opts, config, context);
-                    drawCanvas(opts, context);
+                    drawCanvas(opts, context, false);
                 },
                 onAnimationFinish: function onAnimationFinish() {
                     _this.event.trigger('renderComplete');
@@ -1920,6 +2578,11 @@ var Charts = function Charts(opts) {
     opts.animation = opts.animation === false ? false : true;
     var config$$1 = assign({}, config);
     config$$1.yAxisTitleWidth = opts.yAxis.disabled !== true && opts.yAxis.title ? config$$1.yAxisTitleWidth : 0;
+    // 更新 config.columnLine.leftYAxisTitleWidth 和 config.columnLine.rightYAxisTitleWidth
+    // Added by Tang Shujun
+    config$$1.columnLine.leftYAxisTitleWidth = opts.leftYAxis.disabled !== true && opts.leftYAxis.titleColumn ? config$$1.columnLine.leftYAxisTitleWidth : 0;
+    config$$1.columnLine.rightYAxisTitleWidth = opts.rightYAxis.disabled !== true && opts.rightYAxis.titleLine ? config$$1.columnLine.rightYAxisTitleWidth : 0;
+
     config$$1.pieChartLinePadding = opts.dataLabel === false ? 0 : config$$1.pieChartLinePadding;
     config$$1.pieChartTextPadding = opts.dataLabel === false ? 0 : config$$1.pieChartTextPadding;
 
@@ -1944,6 +2607,10 @@ Charts.prototype.updateData = function () {
 
     this.opts.series = data.series || this.opts.series;
     this.opts.categories = data.categories || this.opts.categories;
+
+    // Added by Tang Shujun
+    this.opts.seriesColumn = data.seriesColumn || this.opts.seriesColumn;
+    this.opts.seriesLine = data.seriesLine || this.opts.seriesLine;
 
     this.opts.title = assign({}, this.opts.title, data.title || {});
     this.opts.subtitle = assign({}, this.opts.subtitle, data.subtitle || {});
